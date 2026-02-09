@@ -19,4 +19,4 @@ Fully integrated **Backend + Telegram Bot + Mini App** with **x-ui / V2Ray API**
 ---
 
 ## 📁 Project Structure
-
+  bash <(curl -fsSL https://raw.githubusercontent.com/IR-DevCo/Vebora_store/main/install.sh)
