@@ -1,0 +1,18 @@
+# ===== Telegram Bot =====
+python-telegram-bot==20.6.1
+
+# ===== HTTP Requests =====
+requests==2.31.0
+
+# ===== Database =====
+SQLAlchemy==2.0.20
+psycopg2-binary==2.9.7
+python-dotenv==1.0.0
+
+# ===== Security =====
+passlib[bcrypt]==1.7.4
+PyJWT==2.8.0
+
+# ===== Utilities =====
+pydantic==2.2.2
+python-dateutil==2.8.2

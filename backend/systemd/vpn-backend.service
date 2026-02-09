@@ -1,0 +1,15 @@
+[Unit]
+Description=Vebora Store VPN Backend
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/root/vebora-backend
+ExecStart=/usr/bin/env uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+Restart=always
+RestartSec=5
+EnvironmentFile=/root/vebora-backend/.env
+
+[Install]
+WantedBy=multi-user.target

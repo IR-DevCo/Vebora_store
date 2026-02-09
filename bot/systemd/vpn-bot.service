@@ -1,0 +1,15 @@
+[Unit]
+Description=Vebora Store Telegram Bot
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/root/vebora-bot
+ExecStart=/usr/bin/env python3 bot.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/root/vebora-bot/.env
+
+[Install]
+WantedBy=multi-user.target

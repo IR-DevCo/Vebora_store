@@ -1,0 +1,24 @@
+# ===== FastAPI & Uvicorn =====
+fastapi==0.112.2
+uvicorn[standard]==0.23.2
+
+# ===== Database =====
+SQLAlchemy==2.0.20
+psycopg2-binary==2.9.7
+python-dotenv==1.0.0
+
+# ===== Telegram Bot =====
+python-telegram-bot==20.6.1
+
+# ===== Security =====
+passlib[bcrypt]==1.7.4
+PyJWT==2.8.0
+
+# ===== HTTP Requests =====
+requests==2.31.0
+
+# ===== Date & Time =====
+python-dateutil==2.8.2
+
+# ===== Utilities =====
+pydantic==2.2.2
