@@ -4,19 +4,17 @@ set -e
 PROJECT_DIR=/opt/vpn-platform
 LOG_FILE=/var/log/vebora-install.log
 ENV_FILE=$PROJECT_DIR/.env
-GIT_REPO="https://github.com/IR-DevCo/Vebora_store.git"
 
 exec > >(tee -a $LOG_FILE) 2>&1
 
-# ===== Root Check =====
 if [ "$EUID" -ne 0 ]; then
   echo "❌ Please run as root"
   exit 1
 fi
 
-# ===== Banner =====
 clear
 cat << "EOF"
+
 ██╗   ██╗███████╗██████╗  ██████╗ ██████╗  █████╗ 
 ██║   ██║██╔════╝██╔══██╗██╔═══██╗██╔══██╗██╔══██╗
 ██║   ██║█████╗  ██████╔╝██║   ██║██████╔╝███████║
@@ -24,201 +22,122 @@ cat << "EOF"
  ╚████╔╝ ███████╗██████╔╝╚██████╔╝██║  ██║██║  ██║
   ╚═══╝  ╚══════╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
 
-🚀 Vebora Store - VPN Platform Installer
+     🚀 Vebora Store - VPN Platform Installer
+==================================================
+       VEBORA STORE - FULL AUTO INSTALLER
+          Zero Prompt | Auto X-UI Detect
+           MiniApp:7575 | Backend Local
+==================================================
 EOF
 
-# ===== Base Packages =====
 apt update
-apt install -y curl git ca-certificates gnupg lsb-release software-properties-common
+apt install -y curl git ca-certificates gnupg lsb-release software-properties-common jq sqlite3 net-tools python3-venv python3-pip nodejs npm
 
-# ===== Ask for config (once) =====
+# ===== ONLY REQUIRED INPUT =====
+read -p "Enter Telegram Bot Token: " TELEGRAM_BOT_TOKEN
+read -p "Enter Admin Telegram Chat ID: " ADMIN_CHAT_ID
+
 mkdir -p $PROJECT_DIR
 
-if [ ! -f "$ENV_FILE" ]; then
-  read -p "Enter Telegram Bot Token: " TELEGRAM_BOT_TOKEN
-  read -p "Enter Admin Telegram Chat ID: " ADMIN_CHAT_ID
-  read -p "Enter Force Join Channel Username (without @): " FORCE_CHANNEL
-  read -p "Enter Backend Subdomain: " BACKEND_DOMAIN
-  read -p "Enter Mini App Subdomain: " MINIAPP_DOMAIN
-  read -p "Enter 3x-ui URL: " XUI_URL
-  read -p "Enter 3x-ui Username: " XUI_USER
-  read -p "Enter 3x-ui Password: " XUI_PASS
-  read -p "Enter 3x-ui Inbound ID: " XUI_INBOUND_ID
+# ===== AUTO DETECT X-UI =====
+echo "[*] Detecting 3x-ui..."
 
-  cat > $ENV_FILE << EOF
-TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
-ADMIN_CHAT_ID=$ADMIN_CHAT_ID
-FORCE_CHANNEL=$FORCE_CHANNEL
-BACKEND_DOMAIN=$BACKEND_DOMAIN
-MINIAPP_DOMAIN=$MINIAPP_DOMAIN
-XUI_URL=$XUI_URL
-XUI_USER=$XUI_USER
-XUI_PASS=$XUI_PASS
-XUI_INBOUND_ID=$XUI_INBOUND_ID
-DATABASE_URL=postgresql://vpnbot:STRONG_PASSWORD@localhost:5432/vpnbot
-EOF
+XUI_PORT=$(ss -lntp | grep x-ui | awk '{print $4}' | cut -d: -f2 | head -n1 || true)
 
-  chmod 600 $ENV_FILE
+if [ -z "$XUI_PORT" ]; then
+  echo "❌ 3x-ui not detected. Make sure x-ui is running."
+  exit 1
 fi
 
-pause() { read -p "Press Enter to return to menu..."; }
+XUI_URL="http://127.0.0.1:$XUI_PORT"
+echo "✅ X-UI detected at $XUI_URL"
 
-# ===== Prepare Project =====
-prepare_project() {
-  if [ ! -d "$PROJECT_DIR/.git" ]; then
-    echo "📦 Cloning Vebora repository..."
-    rm -rf $PROJECT_DIR
-    git clone $GIT_REPO $PROJECT_DIR
-  else
-    echo "🔄 Updating Vebora repository..."
-    cd $PROJECT_DIR
-    git pull
-  fi
-}
+# ===== AUTO DETECT INBOUND =====
+XUI_DB=$(find /opt /etc -name "x-ui.db" 2>/dev/null | head -n1)
 
-# ===== PostgreSQL =====
-setup_postgres() {
-  apt install -y postgresql
-  sudo -u postgres psql <<EOF
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='vpnbot') THEN
-    CREATE USER vpnbot WITH PASSWORD 'STRONG_PASSWORD';
-  END IF;
-END
-\$\$;
-CREATE DATABASE vpnbot OWNER vpnbot;
+if [ -z "$XUI_DB" ]; then
+  echo "❌ x-ui.db not found"
+  exit 1
+fi
+
+INBOUND_ID=$(sqlite3 "$XUI_DB" "select id from inbounds limit 1;")
+
+if [ -z "$INBOUND_ID" ]; then
+  echo "❌ No inbound found in x-ui"
+  exit 1
+fi
+
+echo "✅ Using Inbound ID: $INBOUND_ID"
+
+# ===== SAVE ENV =====
+cat > $ENV_FILE << EOF
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+ADMIN_CHAT_ID=$ADMIN_CHAT_ID
+
+XUI_URL=$XUI_URL
+XUI_INBOUND_ID=$INBOUND_ID
+
+BACKEND_BIND=127.0.0.1:8000
+MINIAPP_PORT=7575
 EOF
-  echo "✅ PostgreSQL ready"
-  pause
-}
 
-# ===== Node.js =====
-install_node() {
-  curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-  apt install -y nodejs
-}
+chmod 600 $ENV_FILE
 
-# ===== Backend =====
-install_backend() {
-  prepare_project
+echo "✅ Environment configured"
 
-  if [ ! -d "$PROJECT_DIR/backend" ]; then
-    echo "❌ backend/ directory not found in repo"
-    pause
-    return
-  fi
+# ===== CLONE PROJECT IF NOT EXISTS =====
+if [ ! -d "$PROJECT_DIR/backend" ]; then
+  echo "[*] Cloning Vebora platform..."
+  git clone https://github.com/IR-DevCo/Vebora_store.git $PROJECT_DIR
+fi
 
-  apt install -y python3-venv python3-pip
+# ===== SYSTEMD BACKEND =====
+cat > /etc/systemd/system/vebora-backend.service << EOF
+[Unit]
+Description=Vebora Backend API
+After=network.target
 
-  cd $PROJECT_DIR/backend
-  python3 -m venv venv
-  source venv/bin/activate
-  pip install -r requirements.txt
+[Service]
+WorkingDirectory=$PROJECT_DIR/backend
+ExecStart=$PROJECT_DIR/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
 
-  cp systemd/vpn-backend.service /etc/systemd/system/ || true
-  systemctl daemon-reload
+[Install]
+WantedBy=multi-user.target
+EOF
 
-  echo "✅ Backend installed"
-  pause
-}
+# ===== SYSTEMD BOT =====
+cat > /etc/systemd/system/vebora-bot.service << EOF
+[Unit]
+Description=Vebora Telegram Bot
+After=network.target
 
-# ===== Bot =====
-install_bot() {
-  prepare_project
+[Service]
+WorkingDirectory=$PROJECT_DIR/bot
+ExecStart=$PROJECT_DIR/bot/venv/bin/python bot.py
+Restart=always
 
-  if [ ! -d "$PROJECT_DIR/bot" ]; then
-    echo "❌ bot/ directory not found"
-    pause
-    return
-  fi
+[Install]
+WantedBy=multi-user.target
+EOF
 
-  cd $PROJECT_DIR/bot
-  python3 -m venv venv
-  source venv/bin/activate
-  pip install -r requirements.txt
+# ===== SYSTEMD MINIAPP =====
+cat > /etc/systemd/system/vebora-miniapp.service << EOF
+[Unit]
+Description=Vebora Mini App
+After=network.target
 
-  cp systemd/vpn-bot.service /etc/systemd/system/ || true
-  systemctl daemon-reload
+[Service]
+WorkingDirectory=$PROJECT_DIR/miniapp
+ExecStart=/usr/bin/npm run start -- -p 7575
+Restart=always
 
-  echo "✅ Telegram Bot installed"
-  pause
-}
+[Install]
+WantedBy=multi-user.target
+EOF
 
-# ===== Mini App =====
-install_miniapp() {
-  prepare_project
-  install_node
-
-  if [ ! -d "$PROJECT_DIR/miniapp" ]; then
-    echo "❌ miniapp/ directory not found"
-    pause
-    return
-  fi
-
-  cd $PROJECT_DIR/miniapp
-  npm install
-  npm run build
-
-  echo "✅ Mini App built"
-  pause
-}
-
-# ===== Nginx =====
-setup_nginx() {
-  apt install -y nginx
-  cp $PROJECT_DIR/nginx/*.conf /etc/nginx/sites-enabled/ || true
-  nginx -t && systemctl reload nginx
-  echo "✅ Nginx configured"
-  pause
-}
-
-# ===== SSL =====
-setup_ssl() {
-  apt install -y certbot python3-certbot-nginx
-  certbot --nginx
-  echo "✅ SSL configured"
-  pause
-}
-
-# ===== Start Services =====
-start_services() {
-  systemctl enable vpn-backend vpn-bot || true
-  systemctl restart vpn-backend vpn-bot || true
-  echo "✅ Services started"
-  pause
-}
-
-# ===== Menu =====
-menu() {
-  clear
-  echo "=== Vebora Store Installer Menu ==="
-  echo "1) Install Backend"
-  echo "2) Install Telegram Bot"
-  echo "3) Install Mini App"
-  echo "4) Setup Nginx + Subdomains"
-  echo "5) Setup SSL (Let's Encrypt)"
-  echo "6) Start All Services"
-  echo "7) Setup PostgreSQL"
-  echo "8) Install/Update Node.js LTS"
-  echo "0) Exit"
-  read -p "Select: " opt
-
-  case $opt in
-    1) install_backend ;;
-    2) install_bot ;;
-    3) install_miniapp ;;
-    4) setup_nginx ;;
-    5) setup_ssl ;;
-    6) start_services ;;
-    7) setup_postgres ;;
-    8) install_node; pause ;;
-    0) exit ;;
-    *) echo "Invalid choice"; sleep 2 ;;
-  esac
-}
-
-# ===== Main Loop =====
-while true; do
-  menu
-done
+echo "===================================="
+echo " INSTALL PHASE COMPLETE"
+echo " Now run: bash install.sh again"
+echo " Then choose menu options"
+echo "===================================="
