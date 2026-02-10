@@ -99,50 +99,6 @@ bash <(curl -fsSL https://raw.githubusercontent.com/IR-DevCo/Vebora_store/main/i
 
 ---
 
-## 📁 ساختار پروژه
-
-```
-Vebora_store/
-├── install.sh
-├── backend/
-│   ├── app/
-│   ├── requirements.txt
-│   └── main.py
-├── bot/
-│   ├── bot.py
-│   └── config.py
-├── miniapp/
-│   └── frontend/
-├── nginx/
-│   └── vebora.conf
-└── scripts/
-    ├── ssl.sh
-    ├── postgres.sh
-    └── control-menu.sh
-```
-
----
-
-## 🛠️ رفع خطاهای رایج
-
-### خطای cd: No such file or directory
-
-اگر خطای زیر دیدید:
-
-```
-cd: /opt/vpn-platform/backend: No such file or directory
-```
-
-یعنی مسیر پروژه یا clone انجام نشده یا ساختار فولدر تغییر کرده است. بررسی کنید:
-
-```bash
-ls /opt
-```
-
-و مسیرهای داخل install.sh را با ساختار واقعی هماهنگ کنید.
-
----
-
 ## 🔒 امنیت
 
 * اطلاعات حساس در فایل‌های env نگهداری شوند
