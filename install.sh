@@ -7,6 +7,7 @@ ENV_FILE=$PROJECT_DIR/.env
 
 exec > >(tee -a $LOG_FILE) 2>&1
 
+# ===== ROOT CHECK =====
 if [ "$EUID" -ne 0 ]; then
   echo "❌ Please run as root"
   exit 1
@@ -30,13 +31,19 @@ cat << "EOF"
 ==================================================
 EOF
 
+# ===== BASE PACKAGES =====
 apt update
 apt install -y curl git ca-certificates gnupg lsb-release software-properties-common jq sqlite3 net-tools python3-venv python3-pip nodejs npm
 
-# ===== ONLY REQUIRED INPUT =====
+# ===== REQUIRED INPUT =====
 read -p "Enter Telegram Bot Token: " TELEGRAM_BOT_TOKEN
 read -p "Enter Admin Telegram Chat ID: " ADMIN_CHAT_ID
 
+# ===== REMOVE OLD INSTALL =====
+if [ -d "$PROJECT_DIR" ]; then
+  echo "[*] Removing old installation..."
+  rm -rf "$PROJECT_DIR"
+fi
 mkdir -p $PROJECT_DIR
 
 # ===== AUTO DETECT X-UI =====
@@ -75,155 +82,63 @@ EOF
 chmod 600 $ENV_FILE
 echo "✅ Environment configured"
 
-# ===== CLONE OR UPDATE PROJECT =====
-if [ ! -d "$PROJECT_DIR/.git" ]; then
-  echo "[*] Cloning Vebora platform..."
-  git clone https://github.com/IR-DevCo/Vebora_store.git $PROJECT_DIR
-else
-  echo "[*] Updating Vebora platform..."
-  cd $PROJECT_DIR
-  git pull
-fi
+# ===== CLONE PROJECT =====
+echo "[*] Cloning Vebora platform..."
+git clone https://github.com/IR-DevCo/Vebora_store.git $PROJECT_DIR
 
-pause() { read -p "Press Enter to continue..."; }
-
-# ===== INSTALL FUNCTIONS =====
-install_backend() {
-  cd $PROJECT_DIR/backend
-  python3 -m venv venv
-  source venv/bin/activate
-  pip install -r requirements.txt
-  systemctl daemon-reload
-  systemctl enable vebora-backend
-  systemctl restart vebora-backend
-  echo "✅ Backend installed"
-  pause
-}
-
-install_bot() {
-  cd $PROJECT_DIR/bot
-  python3 -m venv venv
-  source venv/bin/activate
-  pip install -r requirements.txt
-  systemctl daemon-reload
-  systemctl enable vebora-bot
-  systemctl restart vebora-bot
-  echo "✅ Bot installed"
-  # ===== Send Telegram notification =====
-  BOT_MSG="✅ Vebora Bot is now active."
-  curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-    -d "chat_id=$ADMIN_CHAT_ID&text=$BOT_MSG"
-  pause
-}
-
-install_miniapp() {
-  cd $PROJECT_DIR/miniapp
-  npm install
-  npm run build
-  systemctl daemon-reload
-  systemctl enable vebora-miniapp
-  systemctl restart vebora-miniapp
-  echo "✅ Mini App installed"
-  pause
-}
-
-setup_nginx() {
-  apt install -y nginx
-  cp $PROJECT_DIR/nginx/*.conf /etc/nginx/sites-enabled/
-  nginx -t && systemctl reload nginx
-  echo "✅ Nginx configured"
-  pause
-}
-
-setup_ssl() {
-  apt install -y certbot python3-certbot-nginx
-  certbot --nginx --non-interactive --agree-tos
-  echo "✅ SSL configured"
-  pause
-}
-
-start_services() {
-  systemctl restart vebora-backend vebora-bot vebora-miniapp
-  echo "✅ All services started"
-  pause
-}
-
-menu() {
-  while true; do
-    clear
-    echo "=== Vebora Store Installer Menu ==="
-    echo "1) Install Backend"
-    echo "2) Install Telegram Bot"
-    echo "3) Install Mini App"
-    echo "4) Setup Nginx + Subdomains"
-    echo "5) Setup SSL (Let's Encrypt)"
-    echo "6) Start All Services"
-    echo "0) Exit"
-    read -p "Select: " opt
-
-    case $opt in
-      1) install_backend ;;
-      2) install_bot ;;
-      3) install_miniapp ;;
-      4) setup_nginx ;;
-      5) setup_ssl ;;
-      6) start_services ;;
-      0) exit 0 ;;
-      *) echo "Invalid choice"; sleep 2 ;;
-    esac
-  done
-}
-
-# ===== CREATE SYSTEMD SERVICES =====
-mkdir -p /etc/systemd/system
-
-cat > /etc/systemd/system/vebora-backend.service << EOF
+# ===== SETUP SYSTEMD SERVICES =====
+setup_service() {
+  NAME=$1
+  DIR=$2
+  CMD=$3
+cat > /etc/systemd/system/vebora-$NAME.service << EOF
 [Unit]
-Description=Vebora Backend API
+Description=Vebora $NAME
 After=network.target
 
 [Service]
-WorkingDirectory=$PROJECT_DIR/backend
-ExecStart=$PROJECT_DIR/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+WorkingDirectory=$DIR
+ExecStart=$CMD
 Restart=always
-User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
+  systemctl daemon-reload
+  systemctl enable vebora-$NAME
+  systemctl start vebora-$NAME
+  echo "✅ $NAME service started"
+}
 
-cat > /etc/systemd/system/vebora-bot.service << EOF
-[Unit]
-Description=Vebora Telegram Bot
-After=network.target
+# ===== INSTALL BACKEND =====
+cd $PROJECT_DIR/backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+setup_service backend "$PROJECT_DIR/backend" "$PROJECT_DIR/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000"
 
-[Service]
-WorkingDirectory=$PROJECT_DIR/bot
-ExecStart=$PROJECT_DIR/bot/venv/bin/python bot.py
-Restart=always
-User=root
+# ===== INSTALL BOT =====
+cd $PROJECT_DIR/bot
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+setup_service bot "$PROJECT_DIR/bot" "$PROJECT_DIR/bot/venv/bin/python bot.py"
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# ===== INSTALL MINIAPP =====
+cd $PROJECT_DIR/miniapp
+npm install
+npm run build
+setup_service miniapp "$PROJECT_DIR/miniapp" "/usr/bin/npm run start -- -p 7575"
 
-cat > /etc/systemd/system/vebora-miniapp.service << EOF
-[Unit]
-Description=Vebora Mini App
-After=network.target
+# ===== SEND TELEGRAM NOTIFICATION =====
+echo "[*] Sending Telegram activation message..."
+curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+  -d chat_id="$ADMIN_CHAT_ID" \
+  -d text="✅ Your Vebora VPN Bot is now active!"
 
-[Service]
-WorkingDirectory=$PROJECT_DIR/miniapp
-ExecStart=/usr/bin/npm run start -- -p 7575
-Restart=always
-User=root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-echo "✅ Systemd services created"
-
-# ===== START MENU =====
-menu
+echo "===================================="
+echo " ✅ Vebora Store installation complete!"
+echo " MiniApp available at http://<server-ip>:7575"
+echo " Backend running on 127.0.0.1:8000"
+echo " Telegram Bot activated and notification sent"
+echo "===================================="
