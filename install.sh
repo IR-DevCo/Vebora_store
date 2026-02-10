@@ -41,32 +41,24 @@ mkdir -p $PROJECT_DIR
 
 # ===== AUTO DETECT X-UI =====
 echo "[*] Detecting 3x-ui..."
-
 XUI_PORT=$(ss -lntp | grep x-ui | awk '{print $4}' | cut -d: -f2 | head -n1 || true)
-
 if [ -z "$XUI_PORT" ]; then
   echo "❌ 3x-ui not detected. Make sure x-ui is running."
   exit 1
 fi
-
 XUI_URL="http://127.0.0.1:$XUI_PORT"
 echo "✅ X-UI detected at $XUI_URL"
 
-# ===== AUTO DETECT INBOUND =====
 XUI_DB=$(find /opt /etc -name "x-ui.db" 2>/dev/null | head -n1)
-
 if [ -z "$XUI_DB" ]; then
   echo "❌ x-ui.db not found"
   exit 1
 fi
-
 INBOUND_ID=$(sqlite3 "$XUI_DB" "select id from inbounds limit 1;")
-
 if [ -z "$INBOUND_ID" ]; then
   echo "❌ No inbound found in x-ui"
   exit 1
 fi
-
 echo "✅ Using Inbound ID: $INBOUND_ID"
 
 # ===== SAVE ENV =====
@@ -80,18 +72,111 @@ XUI_INBOUND_ID=$INBOUND_ID
 BACKEND_BIND=127.0.0.1:8000
 MINIAPP_PORT=7575
 EOF
-
 chmod 600 $ENV_FILE
-
 echo "✅ Environment configured"
 
-# ===== CLONE PROJECT IF NOT EXISTS =====
-if [ ! -d "$PROJECT_DIR/backend" ]; then
+# ===== CLONE OR UPDATE PROJECT =====
+if [ ! -d "$PROJECT_DIR/.git" ]; then
   echo "[*] Cloning Vebora platform..."
   git clone https://github.com/IR-DevCo/Vebora_store.git $PROJECT_DIR
+else
+  echo "[*] Updating Vebora platform..."
+  cd $PROJECT_DIR
+  git pull
 fi
 
-# ===== SYSTEMD BACKEND =====
+pause() { read -p "Press Enter to continue..."; }
+
+# ===== INSTALL FUNCTIONS =====
+install_backend() {
+  cd $PROJECT_DIR/backend
+  python3 -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  systemctl daemon-reload
+  systemctl enable vebora-backend
+  systemctl restart vebora-backend
+  echo "✅ Backend installed"
+  pause
+}
+
+install_bot() {
+  cd $PROJECT_DIR/bot
+  python3 -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  systemctl daemon-reload
+  systemctl enable vebora-bot
+  systemctl restart vebora-bot
+  echo "✅ Bot installed"
+  # ===== Send Telegram notification =====
+  BOT_MSG="✅ Vebora Bot is now active."
+  curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+    -d "chat_id=$ADMIN_CHAT_ID&text=$BOT_MSG"
+  pause
+}
+
+install_miniapp() {
+  cd $PROJECT_DIR/miniapp
+  npm install
+  npm run build
+  systemctl daemon-reload
+  systemctl enable vebora-miniapp
+  systemctl restart vebora-miniapp
+  echo "✅ Mini App installed"
+  pause
+}
+
+setup_nginx() {
+  apt install -y nginx
+  cp $PROJECT_DIR/nginx/*.conf /etc/nginx/sites-enabled/
+  nginx -t && systemctl reload nginx
+  echo "✅ Nginx configured"
+  pause
+}
+
+setup_ssl() {
+  apt install -y certbot python3-certbot-nginx
+  certbot --nginx --non-interactive --agree-tos
+  echo "✅ SSL configured"
+  pause
+}
+
+start_services() {
+  systemctl restart vebora-backend vebora-bot vebora-miniapp
+  echo "✅ All services started"
+  pause
+}
+
+menu() {
+  while true; do
+    clear
+    echo "=== Vebora Store Installer Menu ==="
+    echo "1) Install Backend"
+    echo "2) Install Telegram Bot"
+    echo "3) Install Mini App"
+    echo "4) Setup Nginx + Subdomains"
+    echo "5) Setup SSL (Let's Encrypt)"
+    echo "6) Start All Services"
+    echo "0) Exit"
+    read -p "Select: " opt
+
+    case $opt in
+      1) install_backend ;;
+      2) install_bot ;;
+      3) install_miniapp ;;
+      4) setup_nginx ;;
+      5) setup_ssl ;;
+      6) start_services ;;
+      0) exit 0 ;;
+      *) echo "Invalid choice"; sleep 2 ;;
+    esac
+  done
+}
+
+# ===== CREATE SYSTEMD SERVICES =====
+mkdir -p /etc/systemd/system
+
 cat > /etc/systemd/system/vebora-backend.service << EOF
 [Unit]
 Description=Vebora Backend API
@@ -101,12 +186,12 @@ After=network.target
 WorkingDirectory=$PROJECT_DIR/backend
 ExecStart=$PROJECT_DIR/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
+User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# ===== SYSTEMD BOT =====
 cat > /etc/systemd/system/vebora-bot.service << EOF
 [Unit]
 Description=Vebora Telegram Bot
@@ -116,12 +201,12 @@ After=network.target
 WorkingDirectory=$PROJECT_DIR/bot
 ExecStart=$PROJECT_DIR/bot/venv/bin/python bot.py
 Restart=always
+User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# ===== SYSTEMD MINIAPP =====
 cat > /etc/systemd/system/vebora-miniapp.service << EOF
 [Unit]
 Description=Vebora Mini App
@@ -131,13 +216,14 @@ After=network.target
 WorkingDirectory=$PROJECT_DIR/miniapp
 ExecStart=/usr/bin/npm run start -- -p 7575
 Restart=always
+User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-echo "===================================="
-echo " INSTALL PHASE COMPLETE"
-echo " Now run: bash install.sh again"
-echo " Then choose menu options"
-echo "===================================="
+systemctl daemon-reload
+echo "✅ Systemd services created"
+
+# ===== START MENU =====
+menu
