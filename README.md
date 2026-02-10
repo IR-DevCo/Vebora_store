@@ -1,22 +1,196 @@
-# 🚀 Vebora Store - VPN Platform
+# 🚀 Vebora Store — Commercial VPN Automation Platform
 
-**Commercial VPN Automation Platform**  
-Fully integrated **Backend + Telegram Bot + Mini App** with **x-ui / V2Ray API** support.  
+Vebora Store یک پلتفرم کامل برای **اتوماسیون فروش و مدیریت VPN** است که به صورت یک‌جا Backend، ربات تلگرام، Mini App، اتصال به 3x-ui/Xray و زیرساخت Nginx + SSL را روی VPS نصب و راه‌اندازی می‌کند.
 
----
-
-## 🌟 Features
-
-- Backend: Python (FastAPI) with PostgreSQL
-- Telegram Bot: User management, subscription, messages
-- Mini App: Next.js + Tailwind, Admin & User Dashboard
-- Full integration with x-ui / V2Ray API
-- Dynamic subscription creation & management
-- Force join Telegram channel
-- Nginx & SSL auto configuration
-- Systemd services for automatic startup
+این پروژه برای راه‌اندازی سریع یک سرویس VPN تجاری با حداقل دخالت دستی طراحی شده است.
 
 ---
 
-## 📁 Project Structure
-  bash <(curl -fsSL https://raw.githubusercontent.com/IR-DevCo/Vebora_store/main/install.sh)
+## ✨ امکانات اصلی
+
+* 🤖 ربات تلگرام فروش و مدیریت کاربران
+* 🧠 Backend API (FastAPI/Node-ready Architecture)
+* 📱 Mini App تلگرام برای کاربران
+* 🔗 اتصال مستقیم به **3x-ui / Xray Panel**
+* 🌐 تنظیم خودکار Nginx و ساب‌دامین‌ها
+* 🔐 دریافت و نصب خودکار SSL با Let's Encrypt
+* 🗄️ پشتیبانی از PostgreSQL
+* ⚙️ منوی کنترلی داخل VPS (CLI Control Menu)
+* ♻️ نصب ماژولار (هر بخش جداگانه قابل نصب)
+* 📦 نصب خودکار پیش‌نیازها
+
+---
+
+## 🧱 معماری کلی سیستم
+
+```
+User (Telegram)
+   │
+   ▼
+Telegram Bot  ◀────────▶  Backend API  ◀────────▶  3x-ui / Xray
+   │                          │
+   ▼                          ▼
+Telegram Mini App        PostgreSQL Database
+
+            Nginx + SSL (Reverse Proxy)
+```
+
+---
+
+## ⚡ نصب سریع (Quick Install)
+
+روی VPS با Ubuntu 22.04 یا بالاتر اجرا کنید:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/IR-DevCo/Vebora_store/main/install.sh)
+```
+
+---
+
+## 📋 پیش‌نیازها
+
+* Ubuntu 22.04 LTS یا جدیدتر
+* دسترسی root
+* دامنه یا ساب‌دامین (برای SSL و Bot/Mini App)
+* پنل 3x-ui فعال
+* توکن ربات تلگرام
+
+---
+
+## 🧭 مراحل نصب در اسکریپت
+
+پس از اجرا، منوی زیر نمایش داده می‌شود:
+
+```
+=== Vebora Store Installer Menu ===
+1) Install Backend
+2) Install Telegram Bot
+3) Install Mini App
+4) Setup Nginx + Subdomains
+5) Setup SSL (Let's Encrypt)
+6) Start All Services
+7) Setup PostgreSQL
+8) Install/Update Node.js LTS
+9) Install VPS Control Menu
+0) Exit
+```
+
+### پیشنهاد ترتیب نصب:
+
+1. Setup PostgreSQL
+2. Install Backend
+3. Install Telegram Bot
+4. Install Mini App
+5. Setup Nginx + Subdomains
+6. Setup SSL (Let's Encrypt)
+7. Start All Services
+8. Install VPS Control Menu
+
+---
+
+## 🔑 اطلاعات مورد نیاز هنگام نصب
+
+در ابتدای اسکریپت از شما اطلاعات زیر پرسیده می‌شود:
+
+* Telegram Bot Token
+* Admin Telegram Chat ID
+* Force Join Channel (اختیاری)
+* Backend Subdomain (مثلاً: api.example.com)
+* Mini App Subdomain (مثلاً: app.example.com)
+* 3x-ui URL
+* 3x-ui Username
+* 3x-ui Password
+* 3x-ui Inbound ID
+
+---
+
+## 🖥️ VPS Control Menu
+
+پس از نصب گزینه 9، یک منوی مدیریتی روی سرور فعال می‌شود که شامل:
+
+* ری‌استارت سرویس‌ها
+* مشاهده لاگ‌ها
+* وضعیت Backend / Bot / Mini App
+* تست اتصال به 3x-ui
+* بررسی وضعیت Nginx و SSL
+
+---
+
+## 📁 ساختار پروژه
+
+```
+Vebora_store/
+├── install.sh
+├── backend/
+│   ├── app/
+│   ├── requirements.txt
+│   └── main.py
+├── bot/
+│   ├── bot.py
+│   └── config.py
+├── miniapp/
+│   └── frontend/
+├── nginx/
+│   └── vebora.conf
+└── scripts/
+    ├── ssl.sh
+    ├── postgres.sh
+    └── control-menu.sh
+```
+
+---
+
+## 🛠️ رفع خطاهای رایج
+
+### خطای cd: No such file or directory
+
+اگر خطای زیر دیدید:
+
+```
+cd: /opt/vpn-platform/backend: No such file or directory
+```
+
+یعنی مسیر پروژه یا clone انجام نشده یا ساختار فولدر تغییر کرده است. بررسی کنید:
+
+```bash
+ls /opt
+```
+
+و مسیرهای داخل install.sh را با ساختار واقعی هماهنگ کنید.
+
+---
+
+## 🔒 امنیت
+
+* اطلاعات حساس در فایل‌های env نگهداری شوند
+* دسترسی SSH محدود شود
+* فقط پورت‌های لازم در فایروال باز باشند
+* Bot Token و Password را عمومی نکنید
+
+---
+
+## 🧩 توسعه و سفارشی‌سازی
+
+این پروژه به گونه‌ای طراحی شده که به راحتی بتوان:
+
+* سیستم پرداخت اضافه کرد
+* پنل گرافیکی مدیریت ساخت
+* چند سرور VPN اضافه کرد
+* سیستم ترافیک و حجم پیشرفته پیاده‌سازی کرد
+
+---
+
+## 📌 مالکیت و توسعه
+
+Developed by: **IR-DevCo**
+Project: **Vebora Store**
+
+---
+
+## 📞 پشتیبانی
+
+برای توسعه، سفارشی‌سازی یا رفع اشکال می‌توانید با تیم توسعه در ارتباط باشید.
+
+---
+
+> ⚠️ این پروژه برای استفاده قانونی و مطابق با قوانین کشور محل استفاده طراحی شده است. مسئولیت استفاده نادرست بر عهده کاربر است.
